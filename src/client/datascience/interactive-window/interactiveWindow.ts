@@ -34,7 +34,6 @@ import {
     IWorkspaceService
 } from '../../common/application/types';
 import { JVSC_EXTENSION_ID, MARKDOWN_LANGUAGE, PYTHON_LANGUAGE } from '../../common/constants';
-import { ContextKey } from '../../common/contextKey';
 import '../../common/extensions';
 import { traceInfo } from '../../common/logger';
 import { IFileSystem } from '../../common/platform/types';
@@ -66,6 +65,7 @@ import { LineQueryRegex, linkCommandAllowList } from '../interactive-common/link
 import { INativeInteractiveWindow } from './types';
 import { generateInteractiveCode } from '../../../datascience-ui/common/cellFactory';
 import { initializeInteractiveOrNotebookTelemetryBasedOnUserAction } from '../telemetry/telemetry';
+import { ContextKey } from '../../common/contextKey';
 
 type InteractiveCellMetadata = {
     inputCollapsed: boolean;
@@ -114,18 +114,19 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
     private _identity: Uri = createInteractiveIdentity();
     private _submitters: Uri[] = [];
     private mode: InteractiveWindowMode = 'multiple';
-    private _kernelConnection?: KernelConnectionMetadata;
-    protected fileInKernel: string | undefined;
+    private fileInKernel: string | undefined;
+    private lastExecutedFileUri?: Uri;
     private cellMatcher;
 
-    private isDisposed = false;
     private internalDisposables: Disposable[] = [];
     private _editorReadyPromise: Promise<NotebookEditor>;
     private _controllerReadyPromise: Deferred<VSCodeNotebookController>;
+    private _kernelConnection?: KernelConnectionMetadata;
     private _kernelReadyPromise: Promise<IKernel> | undefined;
     private notebookDocument: NotebookDocument | undefined;
     private executionPromise: Promise<boolean> | undefined;
     private _notebookEditor: NotebookEditor | undefined;
+    private isDisposed = false;
 
     constructor(
         private readonly applicationShell: IApplicationShell,
@@ -164,7 +165,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
             if (notebookDocument === this.notebookDocument) {
                 this.closedEvent.fire(this);
             }
-        });
+        }, this.internalDisposables);
 
         this.cellMatcher = new CellMatcher(this.configuration.getSettings(this.owningResource));
     }
@@ -178,6 +179,14 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
             controller: controller!.controller,
             resourceUri: this.owner
         });
+        kernel.onRestarted(
+            async () => {
+                this.fileInKernel = undefined;
+                await this.runIntialization(kernel);
+            },
+            this,
+            this.internalDisposables
+        );
         await kernel.start();
         this.internalDisposables.push(kernel);
         return kernel;
@@ -406,7 +415,6 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
         }
         return this.executionPromise;
     }
-
     private async createExecutionPromise(code: string, fileUri: Uri, line: number, isDebug: boolean) {
         const notebookEditor = await this._editorReadyPromise;
         const kernel = await this._kernelReadyPromise;
@@ -429,17 +437,14 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
         }
 
         const notebook = kernel?.notebook;
-        if (!notebook) {
+        if (!kernel || !notebook) {
             return false;
         }
+        this.lastExecutedFileUri = fileUri;
         const file = fileUri.fsPath;
         let result = true;
         try {
-            // Before we try to execute code make sure that we have an initial directory set
-            // Normally set via the workspace, but we might not have one here if loading a single loose file
-            if (file !== Identifiers.EmptyFileName) {
-                await notebook.setLaunchingFile(file);
-            }
+            await this.runIntialization(kernel);
 
             if (isDebug) {
                 await kernel!.executeHidden(
@@ -447,9 +452,6 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
                 );
                 await this.jupyterDebugger.startDebugging(kernel!);
             }
-
-            // If the file isn't unknown, set the active kernel's __file__ variable to point to that same file.
-            await this.setFileInKernel(file, kernel!);
 
             result = (await kernel!.executeCell(notebookCell)) !== NotebookCellRunState.Error;
 
@@ -461,21 +463,34 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
         }
         return result;
     }
-
     public undoCells() {
         throw new Error('Method not implemented.');
     }
-
     public redoCells() {
         throw new Error('Method not implemented.');
     }
-
     public removeAllCells() {
         throw new Error('Method not implemented.');
     }
-
     public async exportCells() {
         throw new Error('Method not implemented.');
+    }
+
+    private async runIntialization(kernel: IKernel) {
+        const fileUri = this.lastExecutedFileUri;
+        if (!fileUri || !kernel.notebook) {
+            return;
+        }
+
+        const file = fileUri.fsPath;
+        // Before we try to execute code make sure that we have an initial directory set
+        // Normally set via the workspace, but we might not have one here if loading a single loose file
+        if (file !== Identifiers.EmptyFileName) {
+            await kernel.notebook.setLaunchingFile(file);
+        }
+
+        // If the file isn't unknown, set the active kernel's __file__ variable to point to that same file.
+        await this.setFileInKernel(file, kernel!);
     }
 
     public async expandAllCells() {
@@ -557,7 +572,6 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
         }
         return undefined;
     }
-
     protected get notebookMetadata(): Readonly<nbformat.INotebookMetadata> | undefined {
         return undefined;
     }
@@ -597,8 +611,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
             hasCellSelectedContext.set(false).catch(noop);
         }
     }
-
-    protected async setFileInKernel(file: string, kernel: IKernel): Promise<void> {
+    private async setFileInKernel(file: string, kernel: IKernel): Promise<void> {
         // If in perFile mode, set only once
         if (this.mode === 'perFile' && !this.fileInKernel && kernel && file !== Identifiers.EmptyFileName) {
             this.fileInKernel = file;
