@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { QuickPickItem, ThemeIcon } from 'vscode';
+import { QuickPickItem } from 'vscode';
 import { IExtensionSyncActivationService } from '../../activation/types';
 import { IApplicationShell, ICommandManager, IWorkspaceService } from '../../common/application/types';
 import { disposeAllDisposables } from '../../common/helpers';
@@ -40,26 +40,12 @@ export class NotebookControllerFavorites implements IExtensionSyncActivationServ
         function createQuickPickItems(controllers: VSCodeNotebookController[], favorite?: VSCodeNotebookController){
             return controllers.map(item => {
                 const label = item === favorite ? `$(star) ${item.label}` : item.label;
-                const add = {
-                    iconPath: new ThemeIcon('star-full'),
-                    tooltip: 'Select as default controller'
-                };
-                const up = {
-                    iconPath: new ThemeIcon('arrow-up'),
-                    tooltip: 'Move up'
-                };
-                const down = {
-                    iconPath: new ThemeIcon('arrow-down'),
-                    tooltip: 'Move down'
-                };
                 return <QuickPickType>{
                     label,
                     picked: !hiddenKernels.has(item.id),
                     description: '(last used 2hrs ago)',
                     detail: item.controller.detail,
-                    controller: item,
-                    buttons: item === favorite ? [up, down] : [add, up, down],
-                    default: item === favorite
+                    controller: item
                 };
             });    
         }
@@ -73,18 +59,9 @@ export class NotebookControllerFavorites implements IExtensionSyncActivationServ
         quickPick.selectedItems = items.filter(item => item.picked);
         quickPick.placeholder = 'Unselect items you wish to hide from the kernel picker';
         quickPick.show();
-        quickPick.onDidTriggerItemButton(item => {            
-            item.item.label = `$(star) ${item.item.label}`;
-            quickPick.items = createQuickPickItems(quickPick.items.map(item => item.controller), item.item.controller);
-            quickPick.selectedItems = quickPick.items.filter(item => item.picked);
-        });
         quickPick.onDidAccept(() => {
             quickPick.hide();
             const selectedItems = new Set(quickPick.selectedItems.map(item =>item.controller));
-            const defaultItem = quickPick.selectedItems.find(item => item.default);
-            if (defaultItem){
-                defaultItem.controller.label = `$(star-full) ${defaultItem.controller.label}`;
-            }
             const hiddenItems = items.map(item => item.controller).filter(item => !selectedItems.has(item));
             hiddenItems.map(item => item.dispose());
             this.updateSelection(hiddenItems);
