@@ -71,6 +71,9 @@ export class VSCodeNotebookController implements Disposable {
     get label() {
         return this.controller.label;
     }
+    set label(value: string){
+        this.controller.label = value;
+    }
 
     get connection() {
         return this.kernelConnection;

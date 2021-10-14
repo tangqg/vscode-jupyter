@@ -23,6 +23,7 @@ import { RendererCommunication } from './outputs/rendererCommunication';
 import { PlotSaveHandler } from './outputs/plotSaveHandler';
 import { PlotViewHandler } from './outputs/plotViewHandler';
 import { CellOutputDisplayIdTracker } from '../jupyter/kernels/cellDisplayIdTracker';
+import { NotebookControllerFavorites } from './controllerFavorites';
 
 export function registerTypes(serviceManager: IServiceManager) {
     serviceManager.addSingleton<IExtensionSingleActivationService>(
@@ -63,6 +64,10 @@ export function registerTypes(serviceManager: IServiceManager) {
     serviceManager.addSingleton<IExtensionSingleActivationService>(
         IExtensionSyncActivationService,
         RendererCommunication
+    );
+    serviceManager.addSingleton<IExtensionSyncActivationService>(
+        IExtensionSyncActivationService,
+        NotebookControllerFavorites
     );
     serviceManager.addBinding(INotebookControllerManager, IExtensionSyncActivationService);
 }
