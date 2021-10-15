@@ -49,7 +49,7 @@ import { EnvironmentType, PythonEnvironment } from '../../pythonEnvironments/inf
 import { PYTHON_LANGUAGE } from '../../common/constants';
 import { NoPythonKernelsNotebookController } from './noPythonKernelsNotebookController';
 import { getTelemetrySafeVersion } from '../../telemetry/helpers';
-import { KernelFilterService } from './kernelFilter/kernelFilterService';
+import { KernelFilterStorage } from './kernelFilter/kernelFilterStorage';
 
 /**
  * This class tracks notebook documents that are open and the provides NotebookControllers for
@@ -67,6 +67,9 @@ export class NotebookControllerManager implements INotebookControllerManager, IE
     // Listing of the controllers that we have registered
     private registeredControllers = new Map<string, VSCodeNotebookController>();
     private readonly allKernelConnections = new Set<KernelConnectionMetadata>();
+    public get kernelConnections() {
+        return Array.from(this.allKernelConnections.values());
+    }
     private preferredControllers = new Map<NotebookDocument, VSCodeNotebookController>();
 
     private readonly isLocalLaunch: boolean;
@@ -95,7 +98,7 @@ export class NotebookControllerManager implements INotebookControllerManager, IE
         @inject(IDocumentManager) private readonly docManager: IDocumentManager,
         @inject(IPythonApiProvider) private readonly pythonApi: IPythonApiProvider,
         @inject(IApplicationShell) private readonly appShell: IApplicationShell,
-        @inject(KernelFilterService) private readonly filter: KernelFilterService
+        @inject(KernelFilterStorage) private readonly filter: KernelFilterStorage
     ) {
         this._onNotebookControllerSelected = new EventEmitter<{
             notebook: NotebookDocument;
@@ -260,13 +263,23 @@ export class NotebookControllerManager implements INotebookControllerManager, IE
     ): Promise<void> {
         const cancelToken = new CancellationTokenSource();
         this.wasPythonInstalledWhenFetchingControllers = this.extensionChecker.isPythonExtensionInstalled;
-        const connections = await this.getKernelConnectionMetadata(
+        let connections = await this.getKernelConnectionMetadata(
             listLocalNonPythonKernels,
             cancelToken.token,
             useCache
         );
+
+        // Filter the connections.
+        connections = connections
+            .map((item) => {
+                this.allKernelConnections.add(item);
+                return item;
+            })
+            .filter((item) => !this.filter.isKernelHidden(item));
+
         // Now create the actual controllers from our connections
         this.createNotebookControllers(connections);
+
         // If we're listing Python kernels & there aren't any, then add a placeholder for `Python` which will prompt users to install python
         if (!listLocalNonPythonKernels) {
             if (connections.some((item) => isPythonKernelConnection(item))) {
@@ -417,18 +430,25 @@ export class NotebookControllerManager implements INotebookControllerManager, IE
         }
     }
     private onDidChangeKernelFilter() {
+        // Filter the connections.
+        const connections = Array.from(this.allKernelConnections).filter((item) => !this.filter.isKernelHidden(item));
+
         // Try to re-create the missing controllers.
-        this.createNotebookControllers(Array.from(this.allKernelConnections));
+        this.createNotebookControllers(connections);
+
         // Go through all controllers that have been created and hide them.
+        // Unless they are attached to an existing document.
         Array.from(this.registeredControllers.values()).forEach((item) => {
-            // TODO: Take active interpreters of interactive window into account.
-            if (this.filter.isKernelHidden(item.connection)) {
-                item.dispose();
-            }
             // TODO: Don't hide controllers that are already associated with a notebook.
             // If we have a notebook opened and its using a kernel.
             // Else we end up killing the execution as well.
+            if (this.filter.isKernelHidden(item.connection) && !this.isControllerAttachedToADocument(item)) {
+                item.dispose();
+            }
         });
+    }
+    private isControllerAttachedToADocument(controller: VSCodeNotebookController) {
+        return this.notebook.notebookDocuments.some((doc) => controller.isAssociatedWithDocument(doc));
     }
     private createNotebookControllers(
         kernelConnections: KernelConnectionMetadata[],
@@ -436,6 +456,7 @@ export class NotebookControllerManager implements INotebookControllerManager, IE
     ) {
         // First sort our items by label
         const connectionsWithLabel = kernelConnections.map((value) => {
+            this.allKernelConnections.add(value);
             return { connection: value, label: getDisplayNameOrNameOfKernelConnection(value) };
         });
         // connectionsWithLabel.sort((a, b) => {
