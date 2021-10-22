@@ -31,18 +31,18 @@ export class LocalKnownPathKernelSpecFinder extends LocalKernelSpecFinderBase {
     private _oldKernelSpecsDeleted = false;
     private _oldKernelSpecsFolder?: string;
     private get oldKernelSpecsDeleted() {
-        return this._oldKernelSpecsDeleted || this.memento.get<boolean>('OLD_KERNEL_SPECS_DELETED__', false);
+        return this._oldKernelSpecsDeleted || this.memento.get<boolean>('OLD_KERNEL_SPECS_DELETED__1', false);
     }
     private set oldKernelSpecsDeleted(value: boolean) {
         this._oldKernelSpecsDeleted = value;
-        void this.memento.update('OLD_KERNEL_SPECS_DELETED__', value);
+        void this.memento.update('OLD_KERNEL_SPECS_DELETED__1', value);
     }
     private get oldKernelSpecsFolder() {
-        return this._oldKernelSpecsFolder || this.memento.get<string>('OLD_KERNEL_SPECS_FOLDER__', '');
+        return this._oldKernelSpecsFolder || this.memento.get<string>('OLD_KERNEL_SPECS_FOLDER__1', '');
     }
     private set oldKernelSpecsFolder(value: string) {
         this._oldKernelSpecsFolder = value;
-        void this.memento.update('OLD_KERNEL_SPECS_FOLDER__', value);
+        void this.memento.update('OLD_KERNEL_SPECS_FOLDER__1', value);
     }
     constructor(
         @inject(IFileSystem) fs: IFileSystem,
@@ -91,7 +91,10 @@ export class LocalKnownPathKernelSpecFinder extends LocalKernelSpecFinderBase {
     private async deleteOldKernelSpec(kernelSpecFile: string) {
         // Just move this folder into a seprate location.
         const kernelspecFolderName = path.basename(path.dirname(kernelSpecFile));
-        const destinationFolder = path.join(path.dirname(path.dirname(kernelSpecFile)), oldKernelsSpecFolderName);
+        // We want to backup in a directory that's a sibbling of `kernels` folder.
+        // Our code looks for kernels in `kernels` folder, if we put the backup kernels in a subdirectory, we might find them.
+        // Hence backup outside the `kernels` folder.
+        const destinationFolder = path.join(path.dirname(path.dirname(path.dirname(kernelSpecFile))), oldKernelsSpecFolderName);
         if (!fs.pathExistsSync(destinationFolder)) {
             fs.mkdirSync(destinationFolder);
         }
