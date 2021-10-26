@@ -220,6 +220,10 @@ export namespace DataScience {
         'DataScience.sessionDisposed',
         'Cannot execute code, session has been disposed.'
     );
+    export const kernelFilterPlaceholder = localize(
+        'jupyter.kernel.filter.placeHolder',
+        'Choose the kernels that are available in the kernel picker.'
+    );
     export const passwordFailure = localize(
         'DataScience.passwordFailure',
         'Failed to connect to password protected server. Check that password is correct.'
