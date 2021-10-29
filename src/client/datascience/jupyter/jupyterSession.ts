@@ -5,6 +5,7 @@ import type {
     Contents,
     ContentsManager,
     Kernel,
+    KernelMessage,
     KernelSpecManager,
     Session,
     SessionManager
@@ -32,6 +33,13 @@ import { JupyterKernelService } from './kernels/jupyterKernelService';
 import { KernelConnectionMetadata } from './kernels/types';
 
 export class JupyterSession extends BaseJupyterSession {
+    private _kernelTerminationStatus?: KernelMessage.Status;
+    public get status(): KernelMessage.Status {
+        if (this._kernelTerminationStatus) {
+            return this._kernelTerminationStatus;
+        }
+        return super.status;
+    }
     constructor(
         resource: Resource,
         private connInfo: IJupyterConnection,
@@ -123,7 +131,6 @@ export class JupyterSession extends BaseJupyterSession {
         // Listen for session status changes
         this.session?.statusChanged.connect(this.statusHandler); // NOSONAR
     }
-
 
     public async createNewKernelSession(
         resource: Resource,
@@ -221,6 +228,42 @@ export class JupyterSession extends BaseJupyterSession {
                 timeout
             );
         }
+    }
+    protected setSession(session: ISessionWithSocket | undefined) {
+        super.setSession(session);
+        if (!session) {
+            return;
+        }
+        this._kernelTerminationStatus = undefined;
+        // Watch to see if our process exits
+        // This is the place to do this, after this session has been setup as the active kernel.
+        const sessionDisposed = (sender: ISessionWithSocket) => {
+            if (sender !== this.session) {
+                // this could be a restart session.
+                return;
+            }
+            traceError('Jupyter kernel process exited');
+            this._kernelTerminationStatus = 'terminating';
+            this.onStatusChangedEvent.fire('terminating');
+            this.shutdown()
+                .catch((reason) => {
+                    traceError(`Error shutting down jupyter session: ${reason}`);
+                })
+                .finally(() => {
+                    this._kernelTerminationStatus = 'dead';
+                    this.onStatusChangedEvent.fire('dead');
+                });
+        };
+        session.disposed.connect(sessionDisposed);
+        this.disposables.push({
+            dispose: () => {
+                try {
+                    session.disposed.disconnect(sessionDisposed);
+                } catch {
+                    //
+                }
+            }
+        });
     }
 
     private async createBackingFile(): Promise<Contents.IModel | undefined> {
