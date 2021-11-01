@@ -194,6 +194,7 @@ export abstract class BaseJupyterSession implements IJupyterSession {
             if (oldStatusHandler && oldSession) {
                 oldSession.statusChanged.disconnect(oldStatusHandler);
             }
+            // Ensure we always dispose old session after `this.session` points to the new session.
             this.shutdownSession(oldSession, undefined, false).ignoreErrors();
         } else {
             throw new Error(localize.DataScience.sessionDisposed());
