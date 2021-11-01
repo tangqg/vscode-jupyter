@@ -42,7 +42,7 @@ import { getResourceType } from '../../common';
 import { getTelemetrySafeLanguage } from '../../../telemetry/helpers';
 import { inject, injectable, named } from 'inversify';
 import { STANDARD_OUTPUT_CHANNEL } from '../../../common/constants';
-import { JupyterNotebookBase } from '../../jupyter/jupyterNotebook';
+import { JupyterNotebook } from '../../jupyter/jupyterNotebook';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -158,7 +158,7 @@ export class HostRawNotebookProvider extends RawNotebookProviderBase implements 
 
                 if (rawSession.isConnected) {
                     // Create our notebook
-                    const notebook = new JupyterNotebookBase(rawSession, info);
+                    const notebook = new JupyterNotebook(rawSession, info);
 
                     traceInfo(`Finished connecting ${this.id}`);
 

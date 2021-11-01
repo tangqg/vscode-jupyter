@@ -91,7 +91,7 @@ export class Kernel implements IKernel {
         return this._info;
     }
     get status(): KernelMessage.Status {
-        return this.notebook?.session?.status ?? 'unknown';
+        return this.notebook?.session?.status ?? (this.isKernelDead ? 'dead' : 'unknown');
     }
     get disposed(): boolean {
         return this._disposed === true || this.notebook?.session.disposed === true;
@@ -100,6 +100,13 @@ export class Kernel implements IKernel {
         return this._kernelSocket.asObservable();
     }
     private notebook?: INotebook;
+    /**
+     * If the session died, then ensure the status is set to `dead`.
+     * We need to provide an accurate status.
+     * `unknown` is generally used to indicate jupyter kernel hasn't started.
+     * If a jupyter kernel dies after it has started, then status is set to `dead`.
+     */
+    private isKernelDead?: boolean;
     public get session(): IJupyterSession | undefined {
         return this.notebook?.session;
     }
@@ -234,7 +241,10 @@ export class Kernel implements IKernel {
         traceInfo(`Restart requested ${this.notebookDocument.uri}`);
         this.startCancellation.cancel();
         try {
-            await this.kernelExecution.restart(this._notebookPromise?.then((item) => item.session));
+            // If the notebook died, then start a new notebook.
+            await (this._notebookPromise
+                ? this.kernelExecution.restart(this._notebookPromise?.then((item) => item.session))
+                : this.start({ disableUI: false }));
             traceInfoIfCI(`Restarted ${this.notebookDocument.uri}`);
         } catch (ex) {
             traceInfoIfCI(`Restart failed ${this.notebookDocument.uri}`, ex);
@@ -298,6 +308,7 @@ export class Kernel implements IKernel {
                             this.kernelConnectionMetadata
                         );
                         traceInfo(`Starting Notebook in kernel.ts id = ${this.kernelConnectionMetadata.id}`);
+                        this.isKernelDead = false;
                         this.notebook = await this.notebookProvider.getOrCreateNotebook({
                             document: this.notebookDocument,
                             resource: this.resourceUri,
@@ -416,8 +427,16 @@ export class Kernel implements IKernel {
                 // this.kernelExecution.cancel();
                 // Ignore when notebook is disposed as a result of failed restarts.
                 if (!this._ignoreNotebookDisposedErrors) {
+                    const isActiveNotebookDead = this.notebook === notebook;
+
                     this._notebookPromise = undefined;
-                    this._onDisposed.fire();
+                    this.notebook = undefined;
+
+                    // If the active notebook died, then kernel is dead.
+                    if (isActiveNotebookDead) {
+                        this.isKernelDead = true;
+                        this._onStatusChanged.fire('dead');
+                    }
                 }
             });
             const statusChangeHandler = (status: KernelMessage.Status) => {
