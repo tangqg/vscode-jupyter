@@ -55,6 +55,9 @@ function getIndex(index: number, length: number): number {
     }
 }
 
+// Small helper error to use in our class
+class InteractiveCellResultError extends Error {}
+
 @injectable()
 export class CodeWatcher implements ICodeWatcher {
     private static sentExecuteCellTelemetry: boolean = false;
@@ -990,13 +993,14 @@ export class CodeWatcher implements ICodeWatcher {
         debug?: boolean
     ): Promise<boolean> {
         this.addCodePromise = this.addCodePromise.then(async (previousResult) => {
-            // We need to handle if we get an execution failure in the chain
-            // Show the error message and clear our queue
+            // We need to handle if we get a cell execution failure in the chain
             if (!previousResult) {
+                // Show an error message for the cells that were cancelled
                 // + 1 here as we are always one past the failure
                 await this.addErrorMessage(file, leftCount + 1);
-                this.addCodePromise = Promise.resolve(true);
-                return false;
+
+                // Break out of the rest of our promise chain
+                throw new InteractiveCellResultError();
             }
 
             return this.addCodeImpl(code, file, line, editor, debug);
@@ -1006,7 +1010,13 @@ export class CodeWatcher implements ICodeWatcher {
             return await this.addCodePromise;
         } catch (ex) {
             this.addCodePromise = Promise.resolve(true);
-            throw ex;
+
+            // We don't want to rethrow the errors that we use to break out of our promise chain
+            if (!(ex instanceof InteractiveCellResultError)) {
+                throw ex;
+            } else {
+                return false;
+            }
         }
     }
 
