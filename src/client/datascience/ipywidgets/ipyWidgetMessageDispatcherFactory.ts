@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+    // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 'use strict';
@@ -110,7 +110,7 @@ export class IPyWidgetMessageDispatcherFactory implements IDisposable {
         // If there are no old messages, even then return a new instance of the class.
         // This way, the reference to that will be controlled by calling code.
         let messages: ReadonlyArray<IPyWidgetMessage> = [];
-        if (document && this.messagesPerNotebook.get(document)) {
+        if (document && this.messagesPerNotebook.has(document)) {
             messages = this.messagesPerNotebook.get(document) || [];
         }
         const dispatcher = new IPyWidgetMessageDispatcherWithOldMessages(baseDispatcher, messages);
@@ -126,16 +126,13 @@ export class IPyWidgetMessageDispatcherFactory implements IDisposable {
         item?.dispose(); // NOSONAR
     }
 
-    private onMessage(message: IPyWidgetMessage, document?: NotebookDocument) {
-        // For now (we only support splitting notebook editors & running the cells again to get widgest in the new editors)
-        // This is because if we want all widgets rendererd upto this point to work on the new editors (after splitting),
+    private onMessage(message: IPyWidgetMessage, document: NotebookDocument) {
+        // For now (we only support splitting notebook editors & running the cells again to get widgets in the new editors)
+        // This is because if we want all widgets rendered upto this point to work on the new editors (after splitting),
         // then this has the potential to consume a lot of resources (memory).
         // One solution - store n messages in array, then use file as storage.
         // Next problem, data at rest is not encrypted, now we need to encrypt.
         // Till we decide, lets disable this (& only re-broadcast a smaller subset of messages).
-        if (!document) {
-            return;
-        }
         this.messagesPerNotebook.set(document, this.messagesPerNotebook.get(document) || []);
         if (
             message.message === IPyWidgetMessages.IPyWidgets_kernelOptions ||

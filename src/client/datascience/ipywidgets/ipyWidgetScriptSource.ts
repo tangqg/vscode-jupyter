@@ -27,6 +27,7 @@ import { sendTelemetryEvent } from '../../telemetry';
 import { Telemetry } from '../constants';
 import { InteractiveWindowMessages, IPyWidgetMessages } from '../interactive-common/interactiveWindowTypes';
 import { IKernel, IKernelProvider } from '../jupyter/kernels/types';
+import { INotebookCommunication } from '../notebook/types';
 import { ILocalResourceUriConverter } from '../types';
 import { IPyWidgetScriptSourceProvider } from './ipyWidgetScriptSourceProvider';
 import { WidgetScriptSource } from './types';
@@ -42,6 +43,7 @@ export class IPyWidgetScriptSource implements ILocalResourceUriConverter {
         return Uri.file(this._rootScriptFolder);
     }
     private readonly resourcesMappedToExtensionFolder = new Map<string, Promise<Uri>>();
+    private static readonly listOfAllScriptsSent = new WeakMap<NotebookDocument, Map<string, WidgetScriptSource>>();
     private postEmitter = new EventEmitter<{
         message: string;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,7 +168,7 @@ export class IPyWidgetScriptSource implements ILocalResourceUriConverter {
             }
         }
     }
-    public async initialize() {
+    public async initialize(webview?: INotebookCommunication) {
         if (!this.jupyterLab) {
             // Lazy load jupyter lab for faster extension loading.
             // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -194,7 +196,7 @@ export class IPyWidgetScriptSource implements ILocalResourceUriConverter {
             this.httpClient,
             this.factory
         );
-        this.initializeNotebook();
+        this.initializeNotebook(webview);
         traceInfo('IPyWidgetScriptSource.initialize');
     }
 
@@ -220,6 +222,13 @@ export class IPyWidgetScriptSource implements ILocalResourceUriConverter {
             traceError('Failed to get widget source due to an error', ex);
             sendTelemetryEvent(Telemetry.HashedIPyWidgetScriptDiscoveryError);
         } finally {
+            IPyWidgetScriptSource.listOfAllScriptsSent.set(
+                this.document,
+                IPyWidgetScriptSource.listOfAllScriptsSent.get(this.document) ||
+                    new Map<string, WidgetScriptSource>()
+            );
+            const map = IPyWidgetScriptSource.listOfAllScriptsSent.get(this.document)!;
+            map.set(widgetSource.moduleName, widgetSource);
             traceInfo(
                 `${ConsoleForegroundColors.Green}Script for ${moduleName}, is ${widgetSource.scriptUri} from ${widgetSource.source}`
             );
@@ -230,14 +239,14 @@ export class IPyWidgetScriptSource implements ILocalResourceUriConverter {
             });
         }
     }
-    private initializeNotebook() {
+    private initializeNotebook(webview?: INotebookCommunication) {
         if (!this.kernel) {
             return;
         }
         this.kernel.onDisposed(() => this.dispose());
-        this.handlePendingRequests();
+        this.handlePendingRequests(webview);
     }
-    private handlePendingRequests() {
+    private handlePendingRequests(webview?: INotebookCommunication) {
         const pendingModuleNames = Array.from(this.pendingModuleRequests.keys());
         while (pendingModuleNames.length) {
             const moduleName = pendingModuleNames.shift();
@@ -248,6 +257,23 @@ export class IPyWidgetScriptSource implements ILocalResourceUriConverter {
                     traceError.bind(`Failed to send WidgetScript for ${moduleName}`)
                 );
             }
+        }
+        const map = IPyWidgetScriptSource.listOfAllScriptsSent.get(this.document);
+        if (map?.size) {
+            Array.from(map.values()).forEach((widgetSource) => {
+                if (webview && widgetSource.fileUri) {
+                    const scriptUri = webview.asWebviewUri(Uri.file(widgetSource.fileUri)).toString();
+                    this.postEmitter.fire({
+                        message: IPyWidgetMessages.IPyWidgets_WidgetScriptSourceResponse,
+                        payload: { ...widgetSource, scriptUri }
+                    });
+                } else {
+                    this.postEmitter.fire({
+                        message: IPyWidgetMessages.IPyWidgets_WidgetScriptSourceResponse,
+                        payload: widgetSource
+                    });
+                }
+            });
         }
     }
 

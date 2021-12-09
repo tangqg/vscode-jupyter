@@ -109,7 +109,7 @@ export class CDNWidgetScriptSourceProvider implements IWidgetScriptSourceProvide
                 `${ConsoleForegroundColors.Green}Widget Script ${moduleName}#${moduleVersion} found at path: ${diskPath}`
             );
             const scriptUri = (await this.localResourceUriConverter.asWebviewUri(Uri.file(diskPath))).toString();
-            return { moduleName, scriptUri, source: 'cdn' };
+            return { moduleName, scriptUri, source: 'cdn', fileUri: diskPath };
         }
 
         // If still not found, download it.
@@ -140,7 +140,7 @@ export class CDNWidgetScriptSourceProvider implements IWidgetScriptSourceProvide
                 traceInfo(
                     `${ConsoleForegroundColors.Green}Wiget ${moduleName} downloaded into ${scriptUri} from cdn (${diskPath})`
                 );
-                return { moduleName, scriptUri, source: 'cdn' };
+                return { moduleName, scriptUri, source: 'cdn', fileUri: diskPath };
             } else {
                 return { moduleName };
             }

@@ -93,8 +93,15 @@ class NotebookCommunication implements INotebookCommunication, IDisposable {
  */
 @injectable()
 export class NotebookIPyWidgetCoordinator {
-    private readonly messageCoordinators = new WeakMap<NotebookDocument, Promise<CommonMessageCoordinator>>();
+    private readonly messageCoordinators = new Map<
+        NotebookDocument,
+        { webview: INotebookCommunication; promise: Promise<CommonMessageCoordinator> }[]
+    >();
     private readonly attachedEditors = new WeakMap<NotebookDocument, WeakSet<NotebookEditor>>();
+    private attachedWebViews = new Map<
+        NotebookDocument,
+        { webview: INotebookCommunication; disposables: IDisposable[] }[]
+    >();
     private readonly notebookDisposables = new WeakMap<NotebookDocument, Disposable[]>();
     private readonly selectedNotebookController = new WeakMap<NotebookDocument, VSCodeNotebookController>();
     private readonly previouslyInitialized = new WeakSet<NotebookEditor>();
@@ -112,11 +119,16 @@ export class NotebookIPyWidgetCoordinator {
         notebook.onDidChangeVisibleNotebookEditors(this.onDidChangeVisibleNotebookEditors, this, disposableRegistry);
         notebook.onDidCloseNotebookDocument(this.onDidCloseNotebookDocument, this, disposableRegistry);
     }
+    public dispose(): void | undefined {
+        this.messageCoordinators.forEach((v) => v.forEach((item) => item.promise.then((c) => c.dispose())));
+        this.messageCoordinators.clear();
+    }
+
     public setActiveController(notebook: NotebookDocument, controller: VSCodeNotebookController) {
         if (this.selectedNotebookController.get(notebook) === controller) {
             return;
         }
-        // Dispost previous message coordinators.
+        // Dispose previous message coordinators.
         traceInfo(`Setting setActiveController for ${getDisplayPath(notebook.uri)}`);
         const previousCoordinators = this.messageCoordinators.get(notebook);
         if (previousCoordinators) {
@@ -132,7 +144,7 @@ export class NotebookIPyWidgetCoordinator {
                         comms.dispose();
                     }
                 });
-            previousCoordinators.then((item) => item.dispose()).catch(noop);
+            previousCoordinators.forEach((item) => item.promise.then((item) => item.dispose()).catch(noop));
         }
         this.selectedNotebookController.set(notebook, controller);
         // Swap the controller in the communication objects (if we have any).
@@ -164,7 +176,7 @@ export class NotebookIPyWidgetCoordinator {
         }
         traceVerbose(`Intiailize notebook communications for editor ${getDisplayPath(editor.document.uri)}`);
         const comms = new NotebookCommunication(editor, controller);
-        this.addNotebookDiposables(notebook, [comms]);
+        this.addNotebookDisposables(notebook, [comms]);
         this.notebookCommunications.set(editor, comms);
         const { token } = new CancellationTokenSource();
         this.resolveKernel(notebook, comms, token).catch(noop);
@@ -177,17 +189,15 @@ export class NotebookIPyWidgetCoordinator {
         // Create a handler for this notebook if we don't already have one. Since there's one of the notebookMessageCoordinator's for the
         // entire VS code session, we have a map of notebook document to message coordinator
         traceVerbose(`Resolving notebook UI Comms (resolve) for ${getDisplayPath(document.uri)}`);
-        let promise = this.messageCoordinators.get(document);
-        if (promise === undefined) {
-            promise = CommonMessageCoordinator.create(document, this.serviceContainer);
-            this.messageCoordinators.set(document, promise);
-            this.asyncDisposableRegistry.push({
-                dispose: async () => promise?.then((item) => item.dispose()).catch(noop)
-            });
-        }
+        const promise = CommonMessageCoordinator.create(document, this.serviceContainer, webview);
+        this.messageCoordinators.set(document, this.messageCoordinators.get(document) || []);
+        this.messageCoordinators.get(document)!.push({ webview, promise });
+        this.asyncDisposableRegistry.push({
+            dispose: async () => promise?.then((item) => item.dispose()).catch(noop)
+        });
         return Cancellation.race(() => promise!.then(this.attachCoordinator.bind(this, document, webview)), token);
     }
-    private addNotebookDiposables(notebook: NotebookDocument, disposables: IDisposable[]) {
+    private addNotebookDisposables(notebook: NotebookDocument, disposables: IDisposable[]) {
         const currentDisposables: IDisposable[] = this.notebookDisposables.get(notebook) || [];
         currentDisposables.push(...disposables);
         this.notebookDisposables.set(notebook, currentDisposables);
@@ -203,7 +213,7 @@ export class NotebookIPyWidgetCoordinator {
         editors.forEach((editor) => this.notebookCommunications.get(editor)?.dispose());
 
         const coordinator = this.messageCoordinators.get(notebook);
-        void coordinator?.then((c) => c.dispose());
+        void coordinator?.forEach((item) => item.promise.then((c) => c.dispose()));
         this.messageCoordinators.delete(notebook);
 
         this.attachedEditors.delete(notebook);
@@ -214,6 +224,11 @@ export class NotebookIPyWidgetCoordinator {
         c: CommonMessageCoordinator
     ): Promise<void> {
         const promise = createDeferred<void>();
+        this.attachedWebViews.set(document, this.attachedWebViews.get(document) || []);
+        const attachments = this.attachedWebViews.get(document)!;
+        const disposables: IDisposable[] = [];
+        attachments.push({ webview, disposables });
+
         const attachedEditors = this.attachedEditors.get(document) || new Set<NotebookEditor>();
         this.attachedEditors.set(document, attachedEditors);
         if (attachedEditors.has(webview.editor) || this.previouslyInitialized.has(webview.editor)) {
@@ -260,7 +275,7 @@ export class NotebookIPyWidgetCoordinator {
             webview
                 .postMessage({ type: IPyWidgetMessages.IPyWidgets_IsReadyRequest, payload: undefined })
                 .then(noop, noop);
-            this.addNotebookDiposables(document, disposables);
+            this.addNotebookDisposables(document, disposables);
         }
         return promise.promise;
     }

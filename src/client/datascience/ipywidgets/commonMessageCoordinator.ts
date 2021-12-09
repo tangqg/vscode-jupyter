@@ -35,6 +35,7 @@ import { getTelemetrySafeHashedString } from '../../telemetry/helpers';
 import { Commands, Telemetry } from '../constants';
 import { InteractiveWindowMessages } from '../interactive-common/interactiveWindowTypes';
 import { IKernelProvider } from '../jupyter/kernels/types';
+import { INotebookCommunication } from '../notebook/types';
 import { IPyWidgetMessageDispatcherFactory } from './ipyWidgetMessageDispatcherFactory';
 import { IPyWidgetScriptSource } from './ipyWidgetScriptSource';
 import { IIPyWidgetMessageDispatcher } from './types';
@@ -67,7 +68,8 @@ export class CommonMessageCoordinator {
 
     private constructor(
         private readonly document: NotebookDocument,
-        private readonly serviceContainer: IServiceContainer
+        private readonly serviceContainer: IServiceContainer,
+        private readonly webview?: INotebookCommunication
     ) {
         this.disposables = this.serviceContainer.get<IDisposableRegistry>(IDisposableRegistry);
         this.jupyterOutput = this.serviceContainer.get<IOutputChannel>(IOutputChannel, STANDARD_OUTPUT_CHANNEL);
@@ -77,9 +79,10 @@ export class CommonMessageCoordinator {
 
     public static async create(
         document: NotebookDocument,
-        serviceContainer: IServiceContainer
+        serviceContainer: IServiceContainer,
+        webview?: INotebookCommunication
     ): Promise<CommonMessageCoordinator> {
-        const result = new CommonMessageCoordinator(document, serviceContainer);
+        const result = new CommonMessageCoordinator(document, serviceContainer, webview);
         await result.initialize();
         traceVerbose('Created and initailized CommonMessageCoordinator');
         return result;
@@ -114,7 +117,7 @@ export class CommonMessageCoordinator {
     private async initialize(): Promise<void> {
         traceVerbose('initialize CommonMessageCoordinator');
         // First hook up the widget script source that will listen to messages even before we start sending messages.
-        const promise = this.getIPyWidgetScriptSource().initialize();
+        const promise = this.getIPyWidgetScriptSource().initialize(this.webview);
         await promise.then(() => this.getIPyWidgetMessageDispatcher().initialize());
     }
 
