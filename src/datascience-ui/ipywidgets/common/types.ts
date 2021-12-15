@@ -9,6 +9,7 @@ import type * as nbformat from '@jupyterlab/nbformat';
 import { ISignal } from '@lumino/signaling';
 import { IInteractiveWindowMapping } from '../../../client/datascience/interactive-common/interactiveWindowTypes';
 import { Widget } from '@lumino/widgets';
+import type { DOMWidgetView } from '@jupyter-widgets/base/lib';
 
 export interface IMessageSender {
     sendMessage<M extends IInteractiveWindowMapping, T extends keyof M>(type: T, payload?: M[T]): void;
@@ -54,7 +55,7 @@ export interface IJupyterLabWidgetManager {
      *
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    display_view(msg: any, view: Backbone.View<Backbone.Model>, options: any): Promise<Widget>;
+    display_view(view: DOMWidgetView, options: any): Promise<Widget>;
     /**
      * Creates a promise for a view of a given model
      *

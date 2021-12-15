@@ -26,6 +26,9 @@ export class SessionConnection implements ISessionConnection {
     public get unhandledMessage() {
         return this.kernel.unhandledMessage as any;
     }
+    public get pendingInput() {
+        return this.kernel.pendingInput as any;
+    }
     public get anyMessage() {
         return this.kernel.anyMessage as any;
     }

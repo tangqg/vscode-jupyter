@@ -49,6 +49,8 @@ export class DocumentContext implements DocumentRegistry.IContext<INotebookModel
         // Generate a dummy notebook model
         this.model = new NotebookModel();
     }
+    pendingInput: boolean;
+    lastModifiedCheckMargin: number;
     public rename(_newName: string): Promise<void> {
         throw new Error('Method not implemented.');
     }

@@ -3,7 +3,7 @@
 
 'use strict';
 
-import { shims } from '@jupyter-widgets/base';
+import { DOMWidgetView, shims } from '@jupyter-widgets/base';
 import * as jupyterlab from '@jupyter-widgets/jupyterlab-manager';
 import { RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Kernel } from '@jupyterlab/services';
@@ -20,7 +20,6 @@ export const WIDGET_MIMETYPE = 'application/vnd.jupyter.widget-view+json';
 const widgetsRegisteredInRequireJs = ['@jupyter-widgets/controls', '@jupyter-widgets/base', '@jupyter-widgets/output'];
 
 export class WidgetManager extends jupyterlab.WidgetManager {
-    public kernel: Kernel.IKernelConnection;
     public el: HTMLElement;
 
     constructor(
@@ -40,7 +39,6 @@ export class WidgetManager extends jupyterlab.WidgetManager {
             }),
             { saveState: false }
         );
-        this.kernel = kernel;
         this.el = el;
         this.rendermime.addFactory(
             {
@@ -81,14 +79,13 @@ export class WidgetManager extends jupyterlab.WidgetManager {
             .requestCommInfo({ target_name: this.comm_target_name })
             .then((reply) => (reply.content as any).comms);
     }
-    public async display_view(msg: any, view: Backbone.View<Backbone.Model>, options: any): Promise<Widget> {
-        const widget = await super.display_view(msg, view, options);
+    public async display_view(view: DOMWidgetView, options?: any): Promise<Widget> {
         const element = options.node ? (options.node as HTMLElement) : this.el;
         // When do we detach?
         if (element) {
-            Widget.attach(widget, element);
+            Widget.attach(view.luminoWidget, element);
         }
-        return widget;
+        return view.luminoWidget;
     }
     public async restoreWidgets(): Promise<void> {
         // Disabled for now.

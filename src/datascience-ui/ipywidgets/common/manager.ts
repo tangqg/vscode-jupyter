@@ -138,7 +138,7 @@ export class WidgetManager implements IIPyWidgetManager, IMessageHandler {
         const model = await modelPromise;
         const view = await this.manager.create_view(model, { el: ele });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return this.manager.display_view(data, view, { node: ele });
+        return this.manager.display_view(view, { node: ele });
     }
     private initializeKernelAndWidgetManager(options: KernelSocketOptions) {
         if (this.proxyKernel && fastDeepEqual(options, this.options)) {
@@ -159,7 +159,6 @@ export class WidgetManager implements IIPyWidgetManager, IMessageHandler {
             }
             // Create the real manager and point it at our proxy kernel.
             this.manager = new JupyterLabWidgetManager(this.proxyKernel, this.widgetContainer, this.scriptLoader);
-
             // Listen for display data messages so we can prime the model for a display data
             this.proxyKernel.iopubMessage.connect(this.handleDisplayDataMessage.bind(this));
 
@@ -180,10 +179,13 @@ export class WidgetManager implements IIPyWidgetManager, IMessageHandler {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const jupyterLab = require('@jupyterlab/services') as typeof import('@jupyterlab/services'); // NOSONAR
 
-        if (!jupyterLab.KernelMessage.isDisplayDataMsg(payload)) {
+        if (
+            !jupyterLab.KernelMessage.isDisplayDataMsg(payload) &&
+            !jupyterLab.KernelMessage.isExecuteResultMsg(payload)
+        ) {
             return;
         }
-        const displayMsg = payload as KernelMessage.IDisplayDataMsg;
+        const displayMsg = payload as KernelMessage.IDisplayDataMsg | KernelMessage.IExecuteResultMsg;
 
         if (displayMsg.content && displayMsg.content.data && displayMsg.content.data[WIDGET_MIMETYPE]) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
