@@ -560,5 +560,9 @@
     "DataScience.usingNonPrereleaseNo": "No",
     "DataScience.usingNonPrereleaseNoAndDontAskAgain": "Don't ask again",
     "DataScience.usingNonPrerelease": "The 'prerelease' version of the Jupyter extension is recommended when running on VS code insiders. Would you like to switch?",
-    "DataScience.cellAtFormat": "{0} Cell {1}'"
+    "DataScience.cellAtFormat": "{0} Cell {1}'",
+    "DataScience.pythonFileOverridesPythonPackage": "This file could potentially override an existing Python package and interfere with kernel execution, consider renaming it.",
+    "DataScience.alwaysIgnoreWarningsAboutOverridingPythonPackages": "Always ignore warnings about overriding Python packages",
+    "DataScience.ignoreWarningAboutOverridingPythonPackage": "Ignore reserved file warning for '{0}'",
+    "DataScience.moreInfoAboutFileNamesOverridingPythonPackages": "More information on overriding Python packages"
 }
