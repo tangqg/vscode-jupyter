@@ -167,6 +167,7 @@ import { ExportToPythonPlain } from './export/exportToPythonPlain';
 import { ErrorRendererCommunicationHandler } from './errors/errorRendererComms';
 import { KernelProgressReporter } from './progress/kernelProgressReporter';
 import { PreReleaseChecker } from './prereleaseChecker';
+import { ReservedFileNamesDiagnosticProvider } from './editor-integration/reservedFileNameDiagnostics';
 
 // README: Did you make sure "dataScienceIocContainer.ts" has also been updated appropriately?
 
@@ -297,6 +298,7 @@ export function registerTypes(serviceManager: IServiceManager, inNotebookApiExpe
     serviceManager.addSingleton<IExtensionSyncActivationService>(IExtensionSyncActivationService, KernelProgressReporter);
     serviceManager.addSingleton<IDebuggingManager>(IDebuggingManager, DebuggingManager, undefined, [IExtensionSingleActivationService]);
     serviceManager.addSingleton<IExtensionSingleActivationService>(IExtensionSingleActivationService, PreReleaseChecker);
+    serviceManager.addSingleton<IExtensionSingleActivationService>(IExtensionSingleActivationService, ReservedFileNamesDiagnosticProvider);
 
     registerNotebookTypes(serviceManager);
     registerContextTypes(serviceManager);
