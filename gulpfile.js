@@ -147,7 +147,7 @@ async function buildIPyWidgets() {
     if (!isCI && fs.existsSync(path.join(__dirname, 'out/ipywidgets/dist/ipywidgets.js'))) {
         return;
     }
-    await spawnAsync('npm', ['run', 'build-ipywidgets'], webpackEnv);
+    await spawnAsync('npm', ['run', 'build-ipywidgets-production']);
 }
 gulp.task('compile-renderers', async () => {
     console.log('Building renderers');

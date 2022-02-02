@@ -31,3 +31,7 @@ if (document.readyState === 'complete') {
 (window as any).vscIPyWidgets = {
     WidgetManager
 };
+
+export function activate() {
+    console.log(`Activating ipywidgets index.js`);
+}
