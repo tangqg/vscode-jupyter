@@ -180,6 +180,7 @@ export interface IKernel extends IAsyncDisposable {
     interrupt(): Promise<void>;
     restart(): Promise<void>;
     executeCell(cell: NotebookCell): Promise<NotebookCellRunState>;
+    resumeExecution(cell: NotebookCell): Promise<NotebookCellRunState>;
     /**
      * Executes arbitrary code against the kernel without incrementing the execution count.
      */

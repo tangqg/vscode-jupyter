@@ -166,6 +166,7 @@ import { ErrorRendererCommunicationHandler } from './errors/errorRendererComms';
 import { KernelProgressReporter } from './progress/kernelProgressReporter';
 import { PreReleaseChecker } from './prereleaseChecker';
 import { LogReplayService } from './notebook/intellisense/logReplayService';
+import { LongRunningCellRestore } from './jupyter/kernels/longRunningCellRestore';
 
 // README: Did you make sure "dataScienceIocContainer.ts" has also been updated appropriately?
 
@@ -194,6 +195,7 @@ export function registerTypes(serviceManager: IServiceManager, inNotebookApiExpe
     serviceManager.addSingleton<INotebookEditorProvider>(INotebookEditorProvider, NotebookEditorProvider);
     serviceManager.addSingleton<CellHashProviderFactory>(CellHashProviderFactory, CellHashProviderFactory);
     serviceManager.addSingleton<IExtensionSyncActivationService>(IExtensionSyncActivationService, HoverProvider);
+    serviceManager.addSingleton<IExtensionSyncActivationService>(IExtensionSyncActivationService, LongRunningCellRestore);
     serviceManager.add<ICodeWatcher>(ICodeWatcher, CodeWatcher);
     serviceManager.addSingleton<IDataScienceErrorHandler>(IDataScienceErrorHandler, DataScienceErrorHandler);
     serviceManager.add<IDataViewer>(IDataViewer, DataViewer);

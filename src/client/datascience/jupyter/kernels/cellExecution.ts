@@ -81,7 +81,11 @@ export class CellExecutionFactory {
         private readonly cellHashProviderFactory: CellHashProviderFactory
     ) {}
 
-    public create(cell: NotebookCell, metadata: Readonly<KernelConnectionMetadata>) {
+    public create(
+        cell: NotebookCell,
+        metadata: Readonly<KernelConnectionMetadata>,
+        mode: 'execute' | 'resume' = 'execute'
+    ) {
         // eslint-disable-next-line @typescript-eslint/no-use-before-define
         return CellExecution.fromCell(
             cell,
@@ -91,7 +95,8 @@ export class CellExecutionFactory {
             this.disposables,
             this.controller,
             this.outputTracker,
-            this.cellHashProviderFactory.getOrCreate(this.kernel)
+            this.cellHashProviderFactory.getOrCreate(this.kernel),
+            mode
         );
     }
 }
@@ -159,7 +164,8 @@ export class CellExecution implements IDisposable {
         disposables: IDisposableRegistry,
         private readonly controller: NotebookController,
         private readonly outputDisplayIdTracker: CellOutputDisplayIdTracker,
-        private readonly cellHashProvider: ICellHashProvider
+        private readonly cellHashProvider: ICellHashProvider,
+        private readonly mode: 'execute' | 'resume' = 'execute'
     ) {
         disposables.push(this);
         workspace.onDidCloseTextDocument(
@@ -210,7 +216,8 @@ export class CellExecution implements IDisposable {
         disposables: IDisposableRegistry,
         controller: NotebookController,
         outputTracker: CellOutputDisplayIdTracker,
-        cellHashProvider: ICellHashProvider
+        cellHashProvider: ICellHashProvider,
+        mode: 'execute' | 'resume' = 'execute'
     ) {
         return new CellExecution(
             cell,
@@ -220,7 +227,8 @@ export class CellExecution implements IDisposable {
             disposables,
             controller,
             outputTracker,
-            cellHashProvider
+            cellHashProvider,
+            mode
         );
     }
     public async start(session: IJupyterSession) {
@@ -251,10 +259,12 @@ export class CellExecution implements IDisposable {
         this.execution?.start(this.startTime);
         NotebookCellStateTracker.setCellState(this.cell, NotebookCellExecutionState.Executing);
         this.clearLastUsedStreamOutput();
-        // Await here, so that the UI updates on the progress & we clear the output.
-        // Else when running cells with existing outputs, the outputs don't get cleared & it doesn't look like its running.
-        // Ideally we shouldn't have any awaits, but here we want the UI to get updated.
-        await this.execution?.clearOutput();
+        if (this.mode === 'execute') {
+            // Await here, so that the UI updates on the progress & we clear the output.
+            // Else when running cells with existing outputs, the outputs don't get cleared & it doesn't look like its running.
+            // Ideally we shouldn't have any awaits, but here we want the UI to get updated.
+            await this.execution?.clearOutput();
+        }
         this.stopWatch.reset();
 
         // Begin the request that will modify our cell.
@@ -477,28 +487,44 @@ export class CellExecution implements IDisposable {
         };
 
         try {
-            // Compute the hash for the cell we're about to execute if on the interactive window
-            let hash: ICellHash | undefined = undefined;
-            if (this.cell.notebook.notebookType === InteractiveWindowView) {
-                hash = await this.cellHashProvider.addCellHash(this.cell);
+            if (this.mode === 'execute') {
+                // Compute the hash for the cell we're about to execute if on the interactive window
+                let hash: ICellHash | undefined = undefined;
+                if (this.cell.notebook.notebookType === InteractiveWindowView) {
+                    hash = await this.cellHashProvider.addCellHash(this.cell);
+                }
+
+                // At this point we're about to ACTUALLY execute some code. Fire an event to indicate that
+                this._preExecuteEmitter.fire(this.cell);
+
+                // For Jupyter requests, silent === don't output, while store_history === don't update execution count
+                // https://jupyter-client.readthedocs.io/en/stable/api/client.html#jupyter_client.KernelClient.execute
+                this.request = session.requestExecute(
+                    {
+                        code: hash?.code || code,
+                        silent: false,
+                        stop_on_error: false,
+                        allow_stdin: true,
+                        store_history: true
+                    },
+                    false,
+                    metadata
+                );
+            } else {
+                // The easiest way to determine whether previous execution completed is to wait for a new one to complete.
+                // Hence queue a whole execution and wait for that.
+                this.request = session.requestExecute(
+                    {
+                        code: '',
+                        silent: true,
+                        stop_on_error: false,
+                        allow_stdin: true,
+                        store_history: false
+                    },
+                    true,
+                    {}
+                );
             }
-
-            // At this point we're about to ACTUALLY execute some code. Fire an event to indicate that
-            this._preExecuteEmitter.fire(this.cell);
-
-            // For Jupyter requests, silent === don't output, while store_history === don't update execution count
-            // https://jupyter-client.readthedocs.io/en/stable/api/client.html#jupyter_client.KernelClient.execute
-            this.request = session.requestExecute(
-                {
-                    code: hash?.code || code,
-                    silent: false,
-                    stop_on_error: false,
-                    allow_stdin: true,
-                    store_history: true
-                },
-                false,
-                metadata
-            );
         } catch (ex) {
             traceError(`Cell execution failed without request, for cell Index ${this.cell.index}`, ex);
             return this.completedWithErrors(ex);
@@ -508,19 +534,27 @@ export class CellExecution implements IDisposable {
         const clearState = new RefBool(false);
 
         const request = this.request;
-        request.onIOPub = (msg) => {
+        const disposables: IDisposable[] = [];
+
+        const ioPubHandler = (msg: KernelMessage.IIOPubMessage<KernelMessage.IOPubMessageType>) => {
             // Cell has been deleted or the like.
             if (this.cell.document.isClosed) {
                 request.dispose();
             }
             this.handleIOPub(clearState, msg);
         };
+        if (this.mode === 'resume' && this.session) {
+            this.session.onIOPubMessage(ioPubHandler, this, disposables);
+        }
+        request.onIOPub = ioPubHandler;
         request.onReply = (msg) => {
             // Cell has been deleted or the like.
             if (this.cell.document.isClosed) {
                 request.dispose();
             }
-            this.handleReply(clearState, msg);
+            if (this.mode === 'execute') {
+                this.handleReply(clearState, msg);
+            }
         };
         request.onStdin = this.handleInputRequest.bind(this, session);
 
@@ -553,6 +587,8 @@ export class CellExecution implements IDisposable {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 this.completedWithErrors(ex as any);
             }
+        } finally {
+            disposeAllDisposables(disposables);
         }
     }
     @swallowExceptions()

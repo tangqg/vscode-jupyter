@@ -225,6 +225,25 @@ export class Kernel implements IKernel {
         void promise.then((state) => traceInfo(`Cell ${cell.index} executed with state ${state}`));
         return promise;
     }
+    public async resumeExecution(cell: NotebookCell): Promise<NotebookCellRunState> {
+        console.log(cell);
+        // If this kernel is still active & status is dead or dying, then notify the user of this dead kernel.
+        if ((this.status === 'terminating' || this.status === 'dead') && !this.disposed && !this.disposing) {
+            const restartedKernel = await this.notifyAndRestartDeadKernel();
+            if (!restartedKernel) {
+                traceInfo(`Cell ${cell.index} executed with state ${NotebookCellRunState.Error} due to kernel state.`);
+                return NotebookCellRunState.Error;
+            }
+        }
+
+        sendKernelTelemetryEvent(this.resourceUri, Telemetry.ExecuteCell);
+        const stopWatch = new StopWatch();
+        const sessionPromise = this.startNotebook().then((nb) => nb.session);
+        const promise = this.kernelExecution.resumeExecution(sessionPromise, cell);
+        this.trackNotebookCellPerceivedColdTime(stopWatch, sessionPromise, promise).catch(noop);
+        void promise.then((state) => traceInfo(`Cell ${cell.index} executed with state ${state}`));
+        return promise;
+    }
     public async executeHidden(code: string): Promise<nbformat.IOutput[]> {
         const stopWatch = new StopWatch();
         const sessionPromise = this.startNotebook().then((nb) => nb.session);

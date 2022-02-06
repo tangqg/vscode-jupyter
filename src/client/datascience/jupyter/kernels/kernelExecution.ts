@@ -79,6 +79,25 @@ export class KernelExecution implements IDisposable {
         return result[0];
     }
 
+    public async resumeExecution(
+        sessionPromise: Promise<IJupyterSession>,
+        cell: NotebookCell
+    ): Promise<NotebookCellRunState> {
+        if (cell.kind == NotebookCellKind.Markup) {
+            return NotebookCellRunState.Success;
+        }
+
+        // If we're restarting, wait for it to finish
+        if (this._restartPromise) {
+            await this._restartPromise;
+        }
+
+        const executionQueue = this.getOrCreateCellExecutionQueue(cell.notebook, sessionPromise);
+        executionQueue.queueCell(cell, 'resume');
+        const result = await executionQueue.waitForCompletion([cell]);
+        return result[0];
+    }
+
     /**
      * Interrupts the execution of cells.
      * If we don't have a kernel (Jupyter Session) available, then just abort all of the cell executions.
