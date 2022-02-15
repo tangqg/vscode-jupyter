@@ -7,12 +7,7 @@ import { inject, injectable, named } from 'inversify';
 import * as path from 'path';
 import { CancellationToken } from 'vscode';
 import { traceWarning } from '../../../client/common/logger';
-import {
-    IPythonExecutionFactory,
-    SpawnOptions,
-    ObservableExecutionResult,
-    IPythonDaemonExecutionService
-} from '../../../client/common/process/types';
+import { IPythonExecutionFactory, SpawnOptions, ObservableExecutionResult } from '../../../client/common/process/types';
 import { IOutputChannel, IPathUtils } from '../../../client/common/types';
 import { DataScience } from '../../../client/common/utils/localize';
 import { noop } from '../../../client/common/utils/misc';
@@ -25,7 +20,7 @@ import { IEnvironmentActivationService } from '../../../client/interpreter/activ
 import { IInterpreterService } from '../../../client/interpreter/contracts';
 import { PythonEnvironment } from '../../../client/pythonEnvironments/info';
 import { sendTelemetryEvent } from '../../../client/telemetry';
-import { JUPYTER_OUTPUT_CHANNEL, Telemetry, JupyterDaemonModule } from '../../../datascience-ui/common/constants';
+import { JUPYTER_OUTPUT_CHANNEL, Telemetry } from '../../../datascience-ui/common/constants';
 import { JupyterInstallError } from '../../../extension/errors/jupyterInstallError';
 import { Product } from '../../installer/types';
 import { JupyterPaths } from '../../raw/finder/jupyterPaths';
