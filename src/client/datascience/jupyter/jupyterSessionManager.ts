@@ -17,7 +17,7 @@ import { EventEmitter } from 'vscode';
 import { CancellationToken } from 'vscode-jsonrpc';
 import { IApplicationShell } from '../../common/application/types';
 
-import { traceError, traceInfo } from '../../common/logger';
+import { traceError, traceInfo, traceVerbose, traceWarning } from '../../common/logger';
 import {
     IConfigurationService,
     IOutputChannel,
@@ -70,7 +70,6 @@ export class JupyterSessionManager implements IJupyterSessionManager {
     }
     constructor(
         private jupyterPasswordConnect: IJupyterPasswordConnect,
-        _config: IConfigurationService,
         private failOnPassword: boolean | undefined,
         private outputChannel: IOutputChannel,
         private configService: IConfigurationService,
@@ -108,6 +107,9 @@ export class JupyterSessionManager implements IJupyterSessionManager {
                 this.sessionManager.dispose(); // Note, shutting down all will kill all kernels on the same connection. We don't want that.
                 this.sessionManager = undefined;
             }
+            [this.kernelManager, this.specsManager, this.sessionManager].forEach((manager) => {
+                manager?.connectionFailure.disconnect(this.onConnectionFailure, this);
+            });
         } catch (e) {
             traceError(`Exception on session manager shutdown: `, e);
         } finally {
@@ -125,6 +127,9 @@ export class JupyterSessionManager implements IJupyterSessionManager {
             kernelManager: this.kernelManager
         });
         this.contentsManager = new this.jupyterlab.ContentsManager({ serverSettings: this.serverSettings });
+        this.kernelManager.connectionFailure.connect(this.onConnectionFailure, this);
+        this.specsManager.connectionFailure.connect(this.onConnectionFailure, this);
+        this.sessionManager.connectionFailure.connect(this.onConnectionFailure, this);
     }
 
     public async getRunningSessions(): Promise<Session.IModel[]> {
@@ -218,6 +223,11 @@ export class JupyterSessionManager implements IJupyterSessionManager {
             throw new SessionDisposedError();
         }
         try {
+            traceVerbose(
+                `Old Kernelspecs from jupyter server (${
+                    this.specsManager ? '<available>' : '<undefined>'
+                }) are ${JSON.stringify(this.specsManager?.specs?.kernelspecs || {})}`
+            );
             // Fetch the list the session manager already knows about. Refreshing may not work.
             const oldKernelSpecs =
                 this.specsManager?.specs && Object.keys(this.specsManager.specs.kernelspecs).length
@@ -225,11 +235,28 @@ export class JupyterSessionManager implements IJupyterSessionManager {
                     : {};
 
             // Wait for the session to be ready
-            await Promise.race([sleep(10_000), this.sessionManager.ready]);
-
+            let timedOut: boolean | undefined = await Promise.race([
+                sleep(10_000).then(() => true),
+                this.sessionManager.ready.then(() => false)
+            ]);
+            if (timedOut) {
+                traceWarning(`Timeout waiting for session manager to be ready`);
+            }
             // Ask the session manager to refresh its list of kernel specs. This might never
             // come back so only wait for ten seconds.
-            await Promise.race([sleep(10_000), this.specsManager?.refreshSpecs()]);
+            timedOut = await Promise.race([
+                sleep(10_000).then(() => true),
+                this.specsManager?.refreshSpecs().then(() => false)
+            ]);
+            if (timedOut) {
+                traceWarning(`Timeout waiting for session manager to refresh kernelspecs`);
+            }
+
+            traceVerbose(
+                `Kernelspecs from jupyter server (${
+                    this.specsManager ? '<available>' : '<undefined>'
+                }) are ${JSON.stringify(this.specsManager?.specs?.kernelspecs || {})}`
+            );
 
             // Enumerate all of the kernel specs, turning each into a JupyterKernelSpec
             const kernelspecs =
@@ -257,6 +284,9 @@ export class JupyterSessionManager implements IJupyterSessionManager {
         }
     }
 
+    private onConnectionFailure(_: unknown, error: Error) {
+        traceError(`Failure in Jupyter Server connection: ${error.message}`, error);
+    }
     private async getServerConnectSettings(connInfo: IJupyterConnection): Promise<ServerConnection.ISettings> {
         let serverSettings: Partial<ServerConnection.ISettings> = {
             baseUrl: connInfo.baseUrl,
