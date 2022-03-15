@@ -12,3 +12,4 @@ py4j
 bqplot
 K3D
 ipyleaflet
+ipyaladin

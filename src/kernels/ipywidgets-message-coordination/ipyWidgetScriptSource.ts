@@ -29,6 +29,7 @@ import { getOSType, OSType } from '../../test/common';
 import { IKernel, IKernelProvider } from '../types';
 import { IPyWidgetScriptSourceProvider } from './ipyWidgetScriptSourceProvider';
 import { WidgetScriptSource } from './types';
+import { noop } from '../../client/common/utils/misc';
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports */
 const sanitize = require('sanitize-filename');
 
@@ -163,6 +164,19 @@ export class IPyWidgetScriptSource implements ILocalResourceUriConverter {
                     traceError.bind(undefined, 'Failed to send widget sources upon ready')
                 );
             }
+        } else if (message === IPyWidgetMessages.IPyWidgets_Ready && this.scriptProvider) {
+            this.scriptProvider
+                .getWidgetScriptSources()
+                .then((sources) => {
+                    sources.forEach((widgetSource) => {
+                        // Send to UI (even if there's an error) continues instead of hanging while waiting for a response.
+                        this.postEmitter.fire({
+                            message: IPyWidgetMessages.IPyWidgets_WidgetScriptSourceResponse,
+                            payload: widgetSource
+                        });
+                    });
+                })
+                .catch(noop);
         }
     }
     public async initialize() {
@@ -194,6 +208,18 @@ export class IPyWidgetScriptSource implements ILocalResourceUriConverter {
             this.factory
         );
         this.initializeNotebook();
+        this.scriptProvider
+            .getWidgetScriptSources()
+            .then((sources) => {
+                sources.forEach((widgetSource) => {
+                    // Send to UI (even if there's an error) continues instead of hanging while waiting for a response.
+                    this.postEmitter.fire({
+                        message: IPyWidgetMessages.IPyWidgets_WidgetScriptSourceResponse,
+                        payload: widgetSource
+                    });
+                });
+            })
+            .catch(noop);
         traceVerbose('IPyWidgetScriptSource.initialize');
     }
 

@@ -59,8 +59,12 @@ export class LocalWidgetScriptSourceProvider implements IWidgetScriptSourceProvi
 
         const nbextensionsPath = path.join(sysPrefix, 'share', 'jupyter', 'nbextensions');
         // Search only one level deep, hence `*/index.js`.
-        const files = await this.fs.searchLocal(`*${path.sep}index.js`, nbextensionsPath);
+        const [files, extensionFiles] = await Promise.all([
+            this.fs.searchLocal(`*${path.sep}index.js`, nbextensionsPath),
+            this.fs.searchLocal(`*${path.sep}extension.js`, nbextensionsPath)
+        ]);
 
+        const validModules = new Set<string>();
         const validFiles = files.filter((file) => {
             // Should be of the form `<widget module>/index.js`
             const parts = file.split('/'); // On windows this uses the unix separator too.
@@ -68,7 +72,26 @@ export class LocalWidgetScriptSourceProvider implements IWidgetScriptSourceProvi
                 traceError('Incorrect file found when searching for nnbextension entrypoints');
                 return false;
             }
+            validModules.add(parts[0]);
             return true;
+        });
+
+        // Some widgets require additional files to be loaded (i.e they have other dependencies).
+        // The dependencies are specified in the extension.js file of other directories.
+        // E.g. widget a would be in folder nbextensions/widgetA/index.js & index.js would have code such as `define(['widgetB'], function(widgetB) {});`
+        // Jupyter lab/notebooks loads all such widgets, we too should try to load them all.
+        extensionFiles.forEach((file) => {
+            // Should be of the form `<widget module>/index.js`
+            const parts = file.split('/'); // On windows this uses the unix separator too.
+            const moduleName = parts[0];
+            if (validModules.has(moduleName)) {
+                return;
+            }
+            validModules.add(parts[0]);
+            if (parts.length !== 2) {
+                return;
+            }
+            validFiles.push(file);
         });
 
         const mappedFiles = validFiles.map(async (file) => {
