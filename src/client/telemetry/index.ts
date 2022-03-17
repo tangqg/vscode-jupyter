@@ -6,7 +6,12 @@ import type { JSONObject } from '@lumino/coreutils';
 import TelemetryReporter from 'vscode-extension-telemetry/lib/telemetryReporter';
 
 import { IWorkspaceService } from '../common/application/types';
-import { AppinsightsKey, isTestExecution, isUnitTestExecution, JVSC_EXTENSION_ID } from '../common/constants';
+import {
+    AppinsightsKey,
+    isTestExecution,
+    isUnitTestExecution,
+    JVSC_EXTENSION_ID
+} from '../common/constants';
 import { traceError, traceInfo } from '../common/logger';
 import { StopWatch } from '../common/utils/stopWatch';
 import {
@@ -152,7 +157,7 @@ export function sendTelemetryEvent<P extends IEventNamePropertyMapping, E extend
     ex?: Error,
     sendOriginalEventWithErrors?: boolean
 ) {
-    if (isTestExecution() || !isTelemetrySupported()) {
+    if (!isTelemetrySupported() || (isTestExecution() && eventName !== Telemetry.RunTest)) {
         return;
     }
     // If stuff is already queued, then queue the rest.
@@ -1528,4 +1533,8 @@ export interface IEventNamePropertyMapping {
         ename: string;
         evalue: string;
     };
+    [Telemetry.RunTest]: {
+        testName: string;
+        testResult: string;
+    }
 }

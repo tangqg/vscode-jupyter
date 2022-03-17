@@ -35,6 +35,9 @@ import {
 } from './notebook/helper';
 import { translateCellErrorOutput, getTextOutputValue } from '../../notebooks/helpers';
 import { INotebookControllerManager } from '../../notebooks/types';
+import { sendTelemetryEvent } from '../../client/telemetry';
+import { Telemetry } from '../../datascience-ui/common/constants';
+import { StopWatch } from '../../client/common/utils/stopWatch';
 
 suite('Interactive window', async function () {
     this.timeout(120_000);
@@ -42,6 +45,7 @@ suite('Interactive window', async function () {
     const disposables: IDisposable[] = [];
     let interactiveWindowProvider: InteractiveWindowProvider;
     let codeWatcherProvider: IDataScienceCodeLensProvider;
+    let stopwatch: StopWatch;
 
     setup(async function () {
         if (IS_REMOTE_NATIVE_TEST) {
@@ -53,8 +57,14 @@ suite('Interactive window', async function () {
         codeWatcherProvider = api.serviceManager.get(IDataScienceCodeLensProvider);
 
         traceInfo(`Start Test (completed) ${this.currentTest?.title}`);
+        stopwatch = new StopWatch();
     });
     teardown(async function () {
+        let result = this.currentTest?.isFailed() ? 'failed' : this.currentTest?.isPassed() ? 'passed' : 'skipped';
+        if (this.currentTest?.title){
+            sendTelemetryEvent(Telemetry.RunTest, stopwatch.elapsedTime,{testName: this.currentTest?.title, testResult: result});
+        }
+
         traceInfo(`Ended Test ${this.currentTest?.title}`);
         if (this.currentTest?.isFailed()) {
             // For a flaky interrupt test.
